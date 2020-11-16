@@ -34,6 +34,12 @@ std::string Frame_Metadata::metadata_to_string() {
 
 Camera_Server::Camera_Server(std::string_view ip, Camera_Server::Camera_Server_Operating_Mode mode) {
     this->mode = mode;
+    this->camera_server_instance.message_map.insert(
+            std::make_pair(std::string("SEND_FRAME"), &Camera_Server::SEND_FRAME));
+    Camera_Server::Server::member_function_ptr ptr = (this->camera_server_instance.message_map.find(
+            std::string("SEND_FRAME"))->second);
+    Server::Network_Message msg;
+    (this->*ptr)(msg);
 
 }
 
@@ -73,7 +79,10 @@ Camera_Server::~Camera_Server() {
 }
 
 bool Camera_Server::camera_server_start() try {
-     bool good_connection = this->camera_server_connect();
+    bool good_connection = this->camera_server_connect();
+    /**
+     * TODO Add exception throw and go into error thread to connection failure
+     */
     if (!good_connection) {
         return EXIT_FAILURE;
     }
@@ -102,13 +111,26 @@ catch (const std::exception &e) {
 }
 
 void Camera_Server::camera_handler() {
-
+    /**
+     * TODO Implement function lookup table
+     */
+    while (1) {
+        //std::string network_request = this->camera_server_instance.internal_::, Server::Network_Response::HEADER_END);
+        //Server::function_ptr extracted_function = this->camera_server_instance.message_map.find(etwork_request)->second;
+    }
 }
 
 void Camera_Server::network_handler() {
 
 }
 
+void Camera_Server::CONNECT(Server::Network_Message request) {
+
+}
+
+void Camera_Server::SEND_FRAME(Server::Network_Message request) {
+
+}
 
 bool Camera_Server::execute_frame_to_ply() {
     return camera_server_compute_pointcloud();
