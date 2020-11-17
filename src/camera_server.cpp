@@ -16,17 +16,8 @@
 #include <algorithm>
 #include <thread>
 
-/**
- *
- */
-struct Frame_Metadata {
-    uint64_t _device_frame_number; /*!< Real frame number generated from Intel Librealsense API */
-    uint64_t _local_frame_number; /*!< 64-bit unsigned integer [0-1023] that refers to an "index" of a 1024 length "buffer" */
-    uint64_t _timestamp; /*!< 64-bit unsigned integer timestamp */
-    std::string metadata_to_string();
-};
 
-std::string Frame_Metadata::metadata_to_string() {
+std::string Camera_Server::Frame_Metadata::metadata_to_string() {
     return std::string(
             std::to_string(this->_local_frame_number) + "_" + std::to_string(this->_device_frame_number) + "_" +
             std::to_string(this->_timestamp));
@@ -36,11 +27,6 @@ Camera_Server::Camera_Server(std::string_view ip, Camera_Server::Camera_Server_O
     this->mode = mode;
     this->camera_server_instance.message_map.insert(
             std::make_pair(std::string("SEND_FRAME"), &Camera_Server::SEND_FRAME));
-    Camera_Server::Server::member_function_ptr ptr = (this->camera_server_instance.message_map.find(
-            std::string("SEND_FRAME"))->second);
-    Server::Network_Message msg;
-    (this->*ptr)(msg);
-
 }
 
 bool Camera_Server::camera_server_connect() {
@@ -79,6 +65,13 @@ Camera_Server::~Camera_Server() {
 }
 
 bool Camera_Server::camera_server_start() try {
+    this->frame_buffer.resize(1024);
+    if (this->frame_buffer.size() != 1024) {
+        printf("[-] Failed to allocate frame buffer\n");
+        return EXIT_FAILURE;
+    }
+
+    std::thread camera_thread(&Camera_Server::camera_handler, this);
     bool good_connection = this->camera_server_connect();
     /**
      * TODO Add exception throw and go into error thread to connection failure
@@ -86,19 +79,11 @@ bool Camera_Server::camera_server_start() try {
     if (!good_connection) {
         return EXIT_FAILURE;
     }
+
     std::thread network_thread(&Camera_Server::network_handler, this);
     network_thread.join();
-    bool camera_connected = this->RS2_pipeline.start();
-    this->frame_buffer.resize(1024);
-    if (this->frame_buffer.size() != 1024) {
-        printf("[-] Failed to allocate frame buffer\n");
-        return EXIT_FAILURE;
-    }
-    if (!camera_connected) {
-        return EXIT_FAILURE;
-    }
-    std::thread camera_thread(&Camera_Server::camera_handler, this);
-
+    camera_thread.join();
+    //network_thread.join();
     return EXIT_SUCCESS;
 } catch (const rs2::error &e) {
     std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    "
@@ -110,19 +95,6 @@ catch (const std::exception &e) {
     return EXIT_FAILURE;
 }
 
-void Camera_Server::camera_handler() {
-    /**
-     * TODO Implement function lookup table
-     */
-    while (1) {
-        //std::string network_request = this->camera_server_instance.internal_::, Server::Network_Response::HEADER_END);
-        //Server::function_ptr extracted_function = this->camera_server_instance.message_map.find(etwork_request)->second;
-    }
-}
-
-void Camera_Server::network_handler() {
-
-}
 
 void Camera_Server::CONNECT(Server::Network_Message request) {
 
@@ -132,8 +104,71 @@ void Camera_Server::SEND_FRAME(Server::Network_Message request) {
 
 }
 
-bool Camera_Server::execute_frame_to_ply() {
-    return camera_server_compute_pointcloud();
+int Camera_Server::network_handler() try {
+
+    FILE *file_ptr;
+    while (1) {
+        /**
+         * Attempt to acquire lock
+         */
+        std::cout << "[+] Network Handler thread (" << std::this_thread::get_id << ") is attempting to acquire lock"
+                  << std::endl;
+        std::unique_lock<std::mutex> lock(this->frame_buffer_lock);
+        std::cout << "[+] Network Handler thread (" << std::this_thread::get_id << ") has acquired lock"
+                  << std::endl;
+        /**
+         * When lock is acquired, wait for camera thread to finish filling up frame buffer ~50% then wake up
+         */
+        std::cout << "[+] Network Handler thread (" << std::this_thread::get_id
+                  << ") is waiting on camera thread conditional"
+                  << std::endl;
+        this->frame_buffer_ready_cond.wait(lock);
+        std::cout << "[+] Network Handler thread (" << std::this_thread::get_id << ") has woken up via .notify_one"
+                  << std::endl;
+
+    }
+}
+catch (const std::exception &e) {
+    std::cerr << e.what() << std::endl;
+    return EXIT_FAILURE;
+}
+
+int Camera_Server::camera_handler() try {
+    /**
+     * Start Realsense 2 Camera pipeline
+     * This will tell the api to start capturing frames from the camera
+     */
+    rs2::pipeline_profile pipe_profile = this->RS2_pipeline.start();
+    while (1) {
+        /**
+         * Get buffer mutex and lock it
+         */
+        std::cout << "[+] Camera Handler thread (" << std::this_thread::get_id << ") is attempting to acquire lock"
+                  << std::endl;
+        std::unique_lock<std::mutex> lock(this->frame_buffer_lock);
+        std::cout << "[+] Camera Handler thread (" << std::this_thread::get_id << ") has acquired lock"
+                  << std::endl;
+        this->camera_server_compute_pointcloud();
+        std::cout << "[+] Camera Handler thread (" << std::this_thread::get_id << ") is attempting to unlock lock"
+                  << std::endl;
+        lock.unlock();
+        std::cout << "[+] Camera Handler thread (" << std::this_thread::get_id << ") has unlocked lock"
+                  << std::endl;
+        if (this->frame_buffer_index % 512) {
+
+        }
+
+    }
+}
+
+catch (const rs2::error &e) {
+    std::cerr << "RealSense error calling " << e.get_failed_function() << "(" << e.get_failed_args() << "):\n    "
+              << e.what() << std::endl;
+    return EXIT_FAILURE;
+}
+catch (const std::exception &e) {
+    std::cerr << e.what() << std::endl;
+    return EXIT_FAILURE;
 }
 
 bool Camera_Server::camera_server_compute_pointcloud() try {
@@ -167,7 +202,7 @@ bool Camera_Server::camera_server_compute_pointcloud() try {
     std::string file_path = std::string("../framedata/").append(file_name);
     std::cout << "Current file version: " << file_name << std::endl;
     this->RS2_points.export_to_ply(file_path, color);
-
+    //this->RS2_pipeline.stop();
     return EXIT_SUCCESS;
 }
 catch (const rs2::error &e) {

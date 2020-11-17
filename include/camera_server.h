@@ -12,7 +12,7 @@
 #include <mutex>
 #include <atomic>
 #include <map>
-
+#include <condition_variable>
 class Camera_Server {
 public:
     enum Camera_Server_Operating_Mode {
@@ -28,6 +28,14 @@ public:
     bool execute_frame_to_ply();
 
 private:
+
+    struct Frame_Metadata {
+        uint64_t _device_frame_number; /*!< Real frame number generated from Intel Librealsense API */
+        uint64_t _local_frame_number; /*!< 64-bit unsigned integer [0-1023] that refers to an "index" of a 1024 length "buffer" */
+        uint64_t _timestamp; /*!< 64-bit unsigned integer timestamp */
+        std::string metadata_to_string();
+    };
+
     Camera_Server_Operating_Mode mode;
 
     rs2::context RS2_ctx;
@@ -35,8 +43,9 @@ private:
     rs2::points RS2_points;
     rs2::pipeline RS2_pipeline;
 
-    std::vector<rs2::frameset> frame_buffer;
+    std::vector<Camera_Server::Frame_Metadata> frame_buffer;
     std::mutex frame_buffer_lock;
+    std::condition_variable frame_buffer_ready_cond;
     std::atomic<std::size_t> frame_buffer_index;
 
 
@@ -67,9 +76,9 @@ private:
 
     Server camera_server_instance;
 
-    void network_handler();
+    int network_handler();
 
-    void camera_handler();
+    int camera_handler();
 
     bool camera_server_connect();
 
