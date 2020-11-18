@@ -19,7 +19,7 @@ public:
         RELEASE, DEBUG
     };
 
-    Camera_Server(std::string_view ip, Camera_Server::Camera_Server_Operating_Mode mode);
+    Camera_Server(std::string_view ip, std::size_t frame_buffer_size, Camera_Server::Camera_Server_Operating_Mode mode);
 
     ~Camera_Server();
 
@@ -33,6 +33,7 @@ private:
         uint64_t _device_frame_number; /*!< Real frame number generated from Intel Librealsense API */
         uint64_t _local_frame_number; /*!< 64-bit unsigned integer [0-1023] that refers to an "index" of a 1024 length "buffer" */
         uint64_t _timestamp; /*!< 64-bit unsigned integer timestamp */
+        std::string _file_path;
         std::string metadata_to_string();
     };
 
@@ -48,7 +49,6 @@ private:
     std::condition_variable frame_buffer_ready_cond;
     std::atomic<std::size_t> frame_buffer_index;
 
-
     class Server {
     public:
         struct sockaddr_in server_addr;
@@ -56,7 +56,7 @@ private:
         int64_t server_file_descriptor;
         int64_t status;
 
-        std::string internal_buffer;
+        std::vector<char> internal_buffer;
 
         class Network_Message {
             static constexpr const std::size_t HEADER_BEGIN = 0;

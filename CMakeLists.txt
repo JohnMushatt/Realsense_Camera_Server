@@ -3,7 +3,6 @@ project(Realsense_Server)
 set(CMAKE_CXX_STANDARD 17)
 
 find_package(realsense2 REQUIRED)
-message(STATUS "${PROJECT_SOURCE_DIR}")
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS src/*.cpp include/*.h)
 # Enable C++11
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)

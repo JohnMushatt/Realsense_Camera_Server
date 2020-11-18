@@ -1,3 +1,5 @@
 .idea/
 cmake-build-debug-remote-host/
+cmake-build-debug-remote-host---debug
+cmake-build-debug-remote-host---release
 framedata/
