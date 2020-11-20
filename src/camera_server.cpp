@@ -48,7 +48,7 @@ bool Camera_Server::camera_server_connect() {
     memset(&this->camera_server_instance.server_addr, '0', sizeof(this->camera_server_instance.server_addr));
 
     this->camera_server_instance.server_addr.sin_family = AF_INET;
-    this->camera_server_instance.server_addr.sin_port = htons(8080);
+    this->camera_server_instance.server_addr.sin_port = htons(9001);
 
     // Convert IPv4 and IPv6 addresses from text to binary form
     if (inet_pton(AF_INET, "130.215.249.199", &this->camera_server_instance.server_addr.sin_addr) <= 0) {
@@ -110,8 +110,6 @@ void Camera_Server::SEND_FRAME(Server::Network_Message request) {
 }
 
 int Camera_Server::network_handler() try {
-
-    FILE *file_ptr;
     while (1) {
         /**
          * Attempt to acquire lock
@@ -130,20 +128,6 @@ int Camera_Server::network_handler() try {
         this->frame_buffer_ready_cond.wait(lock);
         std::cout << "[+] Network Handler thread (" << std::this_thread::get_id << ") has woken up via .notify_one"
                   << std::endl;
-        /*
-        std::size_t size_error = frame_buffer.size();
-        std::cout << "Current buffer size: " << size_error << std::endl;
-        Frame_Metadata temp = frame_buffer.at(0);
-        file_ptr = fopen(frame_buffer.at(0)._file_path.c_str(), "r");
-
-        struct stat stat_buf;
-        int64_t rc = stat(frame_buffer.at(0)._file_path.c_str(), &stat_buf);
-        int64_t file_size = stat_buf.st_size;
-        this->camera_server_instance.internal_buffer.resize(file_size);
-        this->camera_server_instance.internal_buffer.clear();
-        this->camera_server_instance.internal_buffer.;
-         */
-
         std::ifstream file(frame_buffer.at(0)._file_path);
         std::ostringstream string_stream;
         string_stream << file.rdbuf();
@@ -157,10 +141,13 @@ int Camera_Server::network_handler() try {
             bytes_sent += send(this->camera_server_instance.server_file_descriptor,
                                &this->camera_server_instance.internal_buffer.at(0),
                                this->camera_server_instance.internal_buffer.size(), 0);
-            std::cout << "[+] Network thread sent " << bytes_sent << " bytes to dashboard" << std::endl;
+            double progress = bytes_sent / this->camera_server_instance.internal_buffer.size() * 100;
+            std::cout << "[+] File transfer progress: " << progress << "%" << std::endl;
         }
         std::cout << "[+] Network thread finished sending " << bytes_sent << " bytes to dashboard" << std::endl;
+        lock.unlock();
 
+        //this->frame_buffer_ready_cond.notify_one();
     }
 }
 catch (const std::exception &e) {
@@ -202,7 +189,7 @@ int Camera_Server::camera_handler() try {
             this->frame_buffer_index = 0;
             std::cout << "[+] Frame buffer is full and camera thread is signaling network thread for work" << std::endl;
             this->frame_buffer_ready_cond.notify_one();
-            this->frame_buffer_ready_cond.wait(lock);
+            //this->frame_buffer_ready_cond.wait(lock);
         }
 
     }
